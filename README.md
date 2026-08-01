@@ -76,6 +76,17 @@ Explore the dataset:
 jupyter notebook eda.ipynb
 ```
 
-## Roadmap
+## Project Vision
 
-This dataset is the input to a fine-tuned normalization LLM (QLoRA on an open-weight model), which then feeds a zero-shot TTS engine (F5-TTS / Kokoro / XTTS) for final audio synthesis — the normalization step turns out to be the highest-leverage fix for Marathi TTS quality, since most of the "robotic accent" complaints trace back to bad text, not a bad voice model.
+This dataset is one piece of a larger three-stage pipeline aimed at human-sounding Marathi TTS:
+
+1. **Speech normalization dataset — implemented (this repo).** Raw Marathi text paired with phonetically normalized, pause-annotated Devanagari output, generated and validated as described above.
+2. **Fine-tuned normalization model — planned.** The dataset is used to fine-tune an open-weight instruction model (e.g. Qwen-2.5-7B or Llama-3.1-8B) via QLoRA, so that normalization runs as a fast local model instead of an API call — turning any raw Marathi sentence into speech-ready text on the fly.
+3. **TTS synthesis — planned.** The fine-tuned model's normalized output feeds a zero-shot TTS engine (F5-TTS / Kokoro / XTTS) to produce the final `.wav` audio.
+
+```
+raw Marathi text → [1: normalization dataset] → [2: fine-tuned LLM] → [3: TTS engine] → audio
+                         ✅ done                      ⏳ planned          ⏳ planned
+```
+
+The normalization step is the highest-leverage part of this chain: most of the "robotic accent" and mispronunciation complaints against Marathi TTS trace back to bad input text, not a bad voice model. Getting Stage 1 right is what makes Stages 2 and 3 worth building.
