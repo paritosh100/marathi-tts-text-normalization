@@ -4,3 +4,4 @@ __pycache__/
 .ipynb_checkpoints/
 .env
 run.log
+MARATHI_TTS_PROJECT_PLAN.md
