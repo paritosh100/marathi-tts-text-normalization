@@ -1,6 +1,7 @@
 import json
 import time
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -9,6 +10,8 @@ from google.genai import errors
 # 1. Initialize Gemini Client (Uses GEMINI_API_KEY from .env)
 load_dotenv()
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+
+SCRIPT_DIR = Path(__file__).parent
 
 # Free tier for gemini-3.5-flash-lite allows 15 requests/minute per project.
 MIN_SECONDS_BETWEEN_CALLS = 4.5
@@ -102,7 +105,7 @@ def normalize_sentence(raw_text: str) -> str:
     return res_json.get("normalized_text", raw_text)
 
 def main():
-    output_filename = "marathi_speech_normalization.jsonl"
+    output_filename = SCRIPT_DIR / "marathi_speech_normalization.jsonl"
 
     already_done = set()
     if os.path.exists(output_filename):

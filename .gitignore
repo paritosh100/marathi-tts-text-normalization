@@ -5,3 +5,5 @@ __pycache__/
 .env
 run.log
 MARATHI_TTS_PROJECT_PLAN.md
+output/
+eval_report.jsonl

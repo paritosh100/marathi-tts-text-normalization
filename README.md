@@ -29,14 +29,14 @@ This project fixes that at the text layer: an LLM-based normalizer takes raw, me
 
 ## How the dataset is built
 
-`normalize_sentence.py` generates the training data for this normalization task using the Gemini API, in two steps:
+`dataset/generate_dataset.py` generates the training data for this normalization task using the Gemini API, in two steps:
 
 1. **Generation** — prompts Gemini to produce diverse, natural raw Marathi sentences that mix in numbers, times, percentages, currency, units, and English loanwords, across a range of sentence types (statements, questions, exclamations, commands).
 2. **Normalization** — each raw sentence is passed through a second Gemini call with the normalization rules above, producing the phonetically clean, pause-annotated Devanagari version.
 
 Both steps are paced and retried to stay within API rate limits, and every record is flushed to disk as soon as it's produced — interrupting and re-running the script skips whatever's already done and continues.
 
-The result is `marathi_speech_normalization.jsonl`, an Alpaca-style instruction dataset:
+The result is `dataset/marathi_speech_normalization.jsonl`, an Alpaca-style instruction dataset (split into `dataset/train.jsonl` / `dataset/eval.jsonl` for training):
 
 ```json
 {
@@ -46,7 +46,7 @@ The result is `marathi_speech_normalization.jsonl`, an Alpaca-style instruction 
 }
 ```
 
-`eda.ipynb` explores the generated dataset — length distributions, `[pause]` tag coverage, sentence-type mix, duplicate checks, and residual-English leak detection — to catch generation issues before the data goes into training.
+`dataset/eda.ipynb` explores the generated dataset — length distributions, `[pause]` tag coverage, sentence-type mix, duplicate checks, and residual-English leak detection — to catch generation issues before the data goes into training.
 
 ## Setup
 
@@ -67,13 +67,13 @@ GEMINI_API_KEY=your_api_key_here
 Generate (or resume generating) the dataset:
 
 ```bash
-python3 normalize_sentence.py
+python3 dataset/generate_dataset.py
 ```
 
 Explore the dataset:
 
 ```bash
-jupyter notebook eda.ipynb
+jupyter notebook dataset/eda.ipynb
 ```
 
 ## Project Vision
