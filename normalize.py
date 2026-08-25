@@ -19,6 +19,56 @@ ADAPTER_PATH = os.environ.get(
 REPETITION_PENALTY = 1.3
 MAX_TOKENS = 512
 
+# checkpoint-450's decimal handling is unreliable: eval_report.jsonl showed it
+# both misreading the integer part ("18.5" -> "अठरावीस पूर्णांक पाच", not अठरा)
+# and switching decimal-separator words at random (पॉईंट/दशांश/पूर्णांक) — because
+# the Gemini-generated training data itself uses all three inconsistently for
+# the same "X.5" pattern. Numbers are a solved problem, so decimals are
+# expanded to words deterministically before the raw text ever reaches the
+# model, removing this from what the LLM has to get right. Currency amounts
+# (₹-prefixed) are left alone since those follow a rupees/paise or lakh/crore
+# convention the model already handles correctly, not a plain decimal reading.
+_ONES = (
+    "शून्य एक दोन तीन चार पाच सहा सात आठ नऊ "
+    "दहा अकरा बारा तेरा चौदा पंधरा सोळा सतरा अठरा एकोणीस "
+    "वीस एकवीस बावीस तेवीस चोवीस पंचवीस सव्वीस सत्तावीस अठ्ठावीस एकोणतीस "
+    "तीस एकतीस बत्तीस तेहतीस चौतीस पस्तीस छत्तीस सदतीस अडतीस एकोणचाळीस "
+    "चाळीस एक्केचाळीस बेचाळीस त्रेचाळीस चव्वेचाळीस पंचेचाळीस सेहेचाळीस सत्तेचाळीस अठ्ठेचाळीस एकोणपन्नास "
+    "पन्नास एक्कावन्न बावन्न त्रेपन्न चोपन्न पंचावन्न छप्पन्न सत्तावन्न अठ्ठावन्न एकोणसाठ "
+    "साठ एकसष्ट बासष्ट त्रेसष्ट चौसष्ट पासष्ट सहासष्ट सदुसष्ट अडुसष्ट एकोणसत्तर "
+    "सत्तर एक्काहत्तर बाहत्तर त्र्याहत्तर चौऱ्याहत्तर पंच्याहत्तर शहात्तर सत्याहत्तर अठ्ठ्याहत्तर एकोणऐंशी "
+    "ऐंशी एक्क्याऐंशी ब्याऐंशी त्र्याऐंशी चौऱ्याऐंशी पंच्याऐंशी शहाऐंशी सत्त्याऐंशी अठ्ठ्याऐंशी एकोणनव्वद "
+    "नव्वद एक्क्याण्णव ब्याण्णव त्र्याण्णव चौऱ्याण्णव पंच्याण्णव शहाण्णव सत्त्याण्णव अठ्ठ्याण्णव नव्व्याण्णव"
+).split()
+
+
+def _int_to_marathi(n: int) -> str:
+    """0-99999 -> Marathi words (हजार/शे composition), e.g. 105 -> 'एकशे पाच'."""
+    if n < 100:
+        return _ONES[n]
+    parts = []
+    if n >= 1000:
+        parts.append(_ONES[n // 1000] + " हजार")
+        n %= 1000
+    if n >= 100:
+        hundreds, n = n // 100, n % 100
+        parts.append("शंभर" if hundreds == 1 and n == 0 else _ONES[hundreds] + "शे")
+    if n > 0:
+        parts.append(_ONES[n])
+    return " ".join(parts)
+
+
+_DECIMAL_RE = re.compile(r"(?<![₹$])\b(\d+)\.(\d+)\b")
+
+
+def _expand_decimals(text: str) -> str:
+    def replace(match: re.Match) -> str:
+        whole, frac = match.groups()
+        frac_words = " ".join(_ONES[int(d)] for d in frac)
+        return f"{_int_to_marathi(int(whole))} पूर्णांक {frac_words}"
+
+    return _DECIMAL_RE.sub(replace, text)
+
 # Must match the Alpaca-format training data exactly (dataset/generate_dataset.py) —
 # the LoRA was never trained on chat-template tokens, so apply_chat_template() prompts
 # it into a format it never learned an EOS for, causing runaway/repeated generation.
@@ -75,7 +125,7 @@ def _get_model():
 def normalize_text(raw: str) -> str:
     """Convert raw Marathi text into normalized, pause-annotated Devanagari text."""
     model, tokenizer = _get_model()
-    prompt = PROMPT_TEMPLATE.format(instruction=INSTRUCTION, input=raw)
+    prompt = PROMPT_TEMPLATE.format(instruction=INSTRUCTION, input=_expand_decimals(raw))
     logits_processors = make_logits_processors(repetition_penalty=REPETITION_PENALTY)
     text = generate(
         model,
@@ -93,6 +143,14 @@ def normalize_text(raw: str) -> str:
 
 
 def _demo():
+    assert _int_to_marathi(18) == "अठरा"
+    assert _int_to_marathi(42) == "बेचाळीस"
+    assert _int_to_marathi(105) == "एकशे पाच"
+    assert _int_to_marathi(100) == "शंभर"
+    assert _expand_decimals("साधारण 18.5 km/l इतका आहे") == "साधारण अठरा पूर्णांक पाच km/l इतका आहे"
+    assert _expand_decimals("₹105.50 प्रति लीटर") == "₹105.50 प्रति लीटर", "currency decimals must be left alone"
+    print("normalize_text helpers self-check passed")
+
     out = normalize_text("मी काल २:३० PM ला ५०० रुपयांचे पुस्तक विकत घेतले.")
     assert out, "normalize_text returned empty output"
     print("Normalized:", out)
