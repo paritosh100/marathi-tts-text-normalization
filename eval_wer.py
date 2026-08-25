@@ -70,8 +70,12 @@ def run_eval(eval_path: Path = EVAL_PATH, report_path: Path = REPORT_PATH, limit
         for idx, row in enumerate(rows, 1):
             raw = row["input"]
             reference = row["output"]
+            normalized = normalize_text(raw)
+            # Text-only, no TTS/Whisper involved: isolates the normalizer's own
+            # accuracy from audio round-trip noise (TTS mispronunciation, ASR
+            # mishearing) that also feeds into `wer` below.
+            normalized_wer = word_error_rate(reference, normalized)
             try:
-                normalized = normalize_text(raw)
                 audio = synthesize_speech(normalized)
                 transcribed = transcribe(audio)
                 scored_reference, scored_transcribed = _strip_pause_artifacts(reference, transcribed)
@@ -80,20 +84,33 @@ def run_eval(eval_path: Path = EVAL_PATH, report_path: Path = REPORT_PATH, limit
                     "input": raw,
                     "reference": reference,
                     "normalized": normalized,
+                    "normalized_wer": normalized_wer,
                     "transcribed": transcribed,
                     "wer": wer,
                 }
             except SpeechSynthesisError as e:
-                record = {"input": raw, "reference": reference, "error": str(e)}
+                record = {
+                    "input": raw,
+                    "reference": reference,
+                    "normalized": normalized,
+                    "normalized_wer": normalized_wer,
+                    "error": str(e),
+                }
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
             out.flush()
             results.append(record)
-            logger.info("[%d/%d] wer=%s", idx, len(rows), record.get("wer", "error"))
+            logger.info(
+                "[%d/%d] normalized_wer=%s wer=%s",
+                idx, len(rows), record.get("normalized_wer"), record.get("wer", "error"),
+            )
 
+    normalized_scored = [r["normalized_wer"] for r in results if "normalized_wer" in r]
     scored = [r["wer"] for r in results if "wer" in r]
     aggregate = sum(scored) / len(scored) if scored else float("nan")
+    normalized_aggregate = sum(normalized_scored) / len(normalized_scored) if normalized_scored else float("nan")
     print(f"Evaluated {len(results)} rows ({len(scored)} scored, {len(results) - len(scored)} errored)")
-    print(f"Aggregate WER: {aggregate:.4f}")
+    print(f"Aggregate normalizer-only WER (text vs text, no TTS/ASR): {normalized_aggregate:.4f}")
+    print(f"Aggregate round-trip WER (text -> speech -> text): {aggregate:.4f}")
     return aggregate
 
 
