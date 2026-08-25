@@ -60,12 +60,27 @@ def _int_to_marathi(n: int) -> str:
 
 _DECIMAL_RE = re.compile(r"(?<![₹$])\b(\d+)\.(\d+)\b")
 
+# Marathi doesn't say "point five" for X.5 — it has dedicated half-idioms
+# (दीड=1.5, अडीच=2.5, साडे+number=X.5 for X>=3), confirmed throughout
+# dataset/train.jsonl (साडेतीन, साडेचार, साडेसात, साडेआठ, ...). Falling back to
+# generic digit-by-digit "पूर्णांक" reading for these would be correct-but-
+# unnatural and would actively mismatch the established convention.
+# ponytail: साडे- covers whole<100 only (untested for hundreds+half); anything
+# larger falls back to the generic reading below.
+_HALF_WORDS = {0: "अर्धा", 1: "दीड", 2: "अडीच"}
+
 
 def _expand_decimals(text: str) -> str:
     def replace(match: re.Match) -> str:
         whole, frac = match.groups()
+        whole_n = int(whole)
+        if frac == "5":
+            if whole_n in _HALF_WORDS:
+                return _HALF_WORDS[whole_n]
+            if whole_n < 100:
+                return "साडे" + _ONES[whole_n]
         frac_words = " ".join(_ONES[int(d)] for d in frac)
-        return f"{_int_to_marathi(int(whole))} पूर्णांक {frac_words}"
+        return f"{_int_to_marathi(whole_n)} पूर्णांक {frac_words}"
 
     return _DECIMAL_RE.sub(replace, text)
 
@@ -147,8 +162,11 @@ def _demo():
     assert _int_to_marathi(42) == "बेचाळीस"
     assert _int_to_marathi(105) == "एकशे पाच"
     assert _int_to_marathi(100) == "शंभर"
-    assert _expand_decimals("साधारण 18.5 km/l इतका आहे") == "साधारण अठरा पूर्णांक पाच km/l इतका आहे"
+    assert _expand_decimals("साधारण 18.5 km/l इतका आहे") == "साधारण साडेअठरा km/l इतका आहे"
     assert _expand_decimals("₹105.50 प्रति लीटर") == "₹105.50 प्रति लीटर", "currency decimals must be left alone"
+    assert _expand_decimals("1.5 kg बटाटे") == "दीड kg बटाटे"
+    assert _expand_decimals("2.5% वाढ") == "अडीच% वाढ"
+    assert _expand_decimals("92.4% score") == "ब्याण्णव पूर्णांक चार% score"
     print("normalize_text helpers self-check passed")
 
     out = normalize_text("मी काल २:३० PM ला ५०० रुपयांचे पुस्तक विकत घेतले.")
