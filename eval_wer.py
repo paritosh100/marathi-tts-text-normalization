@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import re
 from pathlib import Path
 
 from normalize import normalize_text
@@ -14,6 +15,23 @@ logger = logging.getLogger(__name__)
 SCRIPT_DIR = Path(__file__).parent
 EVAL_PATH = SCRIPT_DIR / "dataset" / "eval.jsonl"
 REPORT_PATH = SCRIPT_DIR / "eval_report.jsonl"
+
+# tts_client._apply_pauses turns "[pause]" into a comma, and Whisper regularly
+# hallucinates the literal word "pause" into the resulting silence (confirmed
+# across eval_report.jsonl: पाउज/पाज/पॉज/पौज, always standalone at pause points,
+# never a real word). Neither side of the comparison should count that: the
+# reference's "[pause]" markup was never spoken either, so strip both before
+# scoring rather than letting an ASR silence artifact inflate WER.
+# ponytail: fixed hallucination token list from observed data, extend if new
+# spellings show up.
+_PAUSE_TAG_RE = re.compile(r"\[pause\]")
+_PAUSE_HALLUCINATION_TOKENS = {"पाउज", "पाज", "पॉज", "पौज"}
+
+
+def _strip_pause_artifacts(reference: str, hypothesis: str) -> tuple[str, str]:
+    reference = _PAUSE_TAG_RE.sub("", reference)
+    hyp_words = [w for w in hypothesis.split() if w.strip(".,।!?") not in _PAUSE_HALLUCINATION_TOKENS]
+    return reference, " ".join(hyp_words)
 
 
 def word_error_rate(reference: str, hypothesis: str) -> float:
@@ -56,7 +74,8 @@ def run_eval(eval_path: Path = EVAL_PATH, report_path: Path = REPORT_PATH, limit
                 normalized = normalize_text(raw)
                 audio = synthesize_speech(normalized)
                 transcribed = transcribe(audio)
-                wer = word_error_rate(reference, transcribed)
+                scored_reference, scored_transcribed = _strip_pause_artifacts(reference, transcribed)
+                wer = word_error_rate(scored_reference, scored_transcribed)
                 record = {
                     "input": raw,
                     "reference": reference,
@@ -83,6 +102,12 @@ def _demo():
     assert word_error_rate("a b c", "a b") == 1 / 3
     assert word_error_rate("a b c", "") == 1.0
     assert word_error_rate("", "") == 0.0
+
+    ref, hyp = _strip_pause_artifacts("रमेश, [pause] तुझा प्रोजेक्ट", "रमेश, पॉज, तुझा प्रोजेक्ट")
+    assert ref == "रमेश,  तुझा प्रोजेक्ट", ref
+    assert hyp == "रमेश, तुझा प्रोजेक्ट", hyp
+    assert word_error_rate(ref, hyp) == 0.0
+
     print("word_error_rate self-check passed")
 
 
