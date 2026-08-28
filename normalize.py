@@ -81,6 +81,14 @@ def _expand_comma_integers(text: str) -> str:
     return _COMMA_INT_RE.sub(replace, text)
 
 
+# ₹/$ can have a space before the amount ("₹ १०.५०"), which the currency
+# exclusion below doesn't see -- its lookbehind only checks the character
+# immediately before the digits. Eval showed that space letting a paise
+# amount slip through and get wrongly decimal-expanded ("दहा पूर्णांक पाच शून्य"
+# instead of being left for the model's rupees/paise reading). Collapse the
+# space first so the exclusion always sees the currency symbol directly.
+_CURRENCY_SPACE_RE = re.compile(r"([₹$])\s+(?=\d)")
+
 _DECIMAL_RE = re.compile(r"(?<![₹$])\b(\d+)\.(\d+)\b")
 
 # Marathi doesn't say "point five" for X.5 — it has dedicated half-idioms
@@ -94,10 +102,16 @@ _HALF_WORDS = {0: "अर्धा", 1: "दीड", 2: "अडीच"}
 
 
 def _expand_decimals(text: str) -> str:
+    text = _CURRENCY_SPACE_RE.sub(r"\1", text)
+
     def replace(match: re.Match) -> str:
         whole, frac = match.groups()
         whole_n = int(whole)
-        if frac == "5":
+        # frac may be in Devanagari digits ("५"); translate before comparing
+        # so the साडे/दीड/अडीच idiom applies regardless of digit script --
+        # eval showed "४२.५" silently skipping it while "42.5" didn't, purely
+        # because this was comparing against the ASCII literal "5".
+        if frac.translate(_DEVANAGARI_DIGITS) == "5":
             if whole_n in _HALF_WORDS:
                 return _HALF_WORDS[whole_n]
             if whole_n < 100:
@@ -207,6 +221,10 @@ def _demo():
     assert _expand_decimals("1.5 kg बटाटे") == "दीड kg बटाटे"
     assert _expand_decimals("2.5% वाढ") == "अडीच% वाढ"
     assert _expand_decimals("92.4% score") == "ब्याण्णव पूर्णांक चार% score"
+    assert _expand_decimals("४२.५°C पर्यंत") == "साडेबेचाळीस°C पर्यंत", "half-idiom must apply for Devanagari digits too"
+    assert (
+        _expand_decimals("भाव ₹ १०.५० ने वाढले") == "भाव ₹१०.५० ने वाढले"
+    ), "currency decimals must be left alone even with a space before the amount"
     assert _expand_comma_integers("₹62,000 आहे") == "₹बासष्ट हजार आहे"
     assert _expand_comma_integers("₹६२,००० आहे") == "₹बासष्ट हजार आहे"
     assert _expand_comma_integers("₹45,999 आहे") == "₹पंचेचाळीस हजार नऊशे नव्व्याण्णव आहे"
