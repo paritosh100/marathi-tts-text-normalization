@@ -58,6 +58,29 @@ def _int_to_marathi(n: int) -> str:
     return " ".join(parts)
 
 
+_DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+
+# checkpoint-450 also drifts on the *magnitude* of large comma-grouped
+# integers (eval_report.jsonl: "₹62,000" -> "ब्याऐंशी हजार" i.e. 82,000; a
+# Devanagari-digit "₹६२,०००" came back as outright gibberish). Same fix as
+# decimals: numbers are a solved problem, so expand them deterministically
+# before the model sees them instead of trusting it to read digit grouping.
+# Small numbers, times, and percentages aren't touched here because eval
+# showed the model already reads those correctly -- this targets only the
+# failure actually observed.
+# ponytail: assumes Western 3-digit comma grouping (62,000). Indian lakh/crore
+# grouping (1,00,000+) isn't handled -- not seen in eval data yet.
+_COMMA_INT_RE = re.compile(r"(?<![.\d])[0-9०-९]{1,3}(?:,[0-9०-९]{3})+(?!\.[0-9])")
+
+
+def _expand_comma_integers(text: str) -> str:
+    def replace(match: re.Match) -> str:
+        digits = match.group(0).translate(_DEVANAGARI_DIGITS).replace(",", "")
+        return _int_to_marathi(int(digits))
+
+    return _COMMA_INT_RE.sub(replace, text)
+
+
 _DECIMAL_RE = re.compile(r"(?<![₹$])\b(\d+)\.(\d+)\b")
 
 # Marathi doesn't say "point five" for X.5 — it has dedicated half-idioms
@@ -115,15 +138,31 @@ STOP_MARKERS = ("### Instruction:", "### Input:", "### Response:")
 # proper stop-string/logits-based stopping criterion in generate() itself.
 SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 
+# ...but the AC/temperature eval case showed the model restarting the whole
+# response after a "[pause]" tag instead of a period, which the punctuation
+# count above never sees. Catch that verbatim-restart case separately: if the
+# response's own opening words reappear later in the string, everything from
+# there on is the repeat.
+# ponytail: exact-match prefix repeat only (no fuzzy/near-duplicate detection),
+# 3-word prefix chosen to avoid false-triggering on short common phrases.
+_REPEAT_PREFIX_WORDS = 3
+_TRAILING_SEPARATOR_RE = re.compile(r"[\s.,!?]*(\[pause\][\s.,!?]*)*$")
+
 
 def _truncate_runaway(raw: str, generated: str) -> str:
     expected = len(SENTENCE_END_RE.findall(raw))
-    if expected == 0:
-        return generated
-    matches = list(SENTENCE_END_RE.finditer(generated))
-    if len(matches) <= expected:
-        return generated
-    return generated[: matches[expected - 1].end()]
+    if expected:
+        matches = list(SENTENCE_END_RE.finditer(generated))
+        if len(matches) > expected:
+            generated = generated[: matches[expected - 1].end()]
+
+    words = generated.split()
+    if len(words) >= _REPEAT_PREFIX_WORDS * 2:
+        prefix = " ".join(words[:_REPEAT_PREFIX_WORDS])
+        restart = generated.find(prefix, len(prefix))
+        if restart != -1:
+            return _TRAILING_SEPARATOR_RE.sub("", generated[:restart])
+    return generated
 
 _model = None
 _tokenizer = None
@@ -140,7 +179,8 @@ def _get_model():
 def normalize_text(raw: str) -> str:
     """Convert raw Marathi text into normalized, pause-annotated Devanagari text."""
     model, tokenizer = _get_model()
-    prompt = PROMPT_TEMPLATE.format(instruction=INSTRUCTION, input=_expand_decimals(raw))
+    preprocessed = _expand_comma_integers(_expand_decimals(raw))
+    prompt = PROMPT_TEMPLATE.format(instruction=INSTRUCTION, input=preprocessed)
     logits_processors = make_logits_processors(repetition_penalty=REPETITION_PENALTY)
     text = generate(
         model,
@@ -167,6 +207,17 @@ def _demo():
     assert _expand_decimals("1.5 kg बटाटे") == "दीड kg बटाटे"
     assert _expand_decimals("2.5% वाढ") == "अडीच% वाढ"
     assert _expand_decimals("92.4% score") == "ब्याण्णव पूर्णांक चार% score"
+    assert _expand_comma_integers("₹62,000 आहे") == "₹बासष्ट हजार आहे"
+    assert _expand_comma_integers("₹६२,००० आहे") == "₹बासष्ट हजार आहे"
+    assert _expand_comma_integers("₹45,999 आहे") == "₹पंचेचाळीस हजार नऊशे नव्व्याण्णव आहे"
+    assert _expand_comma_integers("₹105.50 प्रति लीटर") == "₹105.50 प्रति लीटर", "plain decimals must be left alone"
+    assert (
+        _truncate_runaway(
+            "कृपया AC चे Temperature २२ degree वर सेट कर.",
+            "कृपया ए सी चे टेम्परेचर बावीस अंश डिग्रीज वर सेट कर [pause] कृपया ए सी चे टेम्परेचर बावीस अंश डिग्रीज वर सेट कर.",
+        )
+        == "कृपया ए सी चे टेम्परेचर बावीस अंश डिग्रीज वर सेट कर"
+    )
     print("normalize_text helpers self-check passed")
 
     out = normalize_text("मी काल २:३० PM ला ५०० रुपयांचे पुस्तक विकत घेतले.")
