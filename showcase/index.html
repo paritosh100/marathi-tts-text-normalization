@@ -6,6 +6,11 @@
 <title>मराठी आवाज — Marathi Voice</title>
 <meta name="description" content="A two-stage Marathi TTS pipeline: LoRA-normalized text spoken by a cloned native voice. Listen to the difference, and see the training journey.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600&family=IBM+Plex+Sans+Devanagari:wght@400;500;600;700&display=swap">
+<!-- Vercel Web Analytics -- vanilla HTML integration, no npm package needed.
+     Only actually collects data once "Web Analytics" is enabled for this
+     project in the Vercel dashboard (Project -> Analytics -> Enable);
+     otherwise this endpoint just 404s harmlessly. -->
+<script defer src="/_vercel/insights/script.js"></script>
 <style>
   :root {
     --paper: #f2efe6;
@@ -304,10 +309,10 @@
           <img src="public/screenshots/unsloth/04-completed.png" alt="A completed QLoRA training run, ready to export or compare">
           <figcaption><b>Completed run</b> — training done, with a direct path to export the checkpoint or compare base vs. fine-tuned output right there in the Studio.</figcaption>
         </figure>
-        <figure>
+        <!-- <figure>
           <img src="public/screenshots/unsloth/05-base-vs-finetuned.png" alt="Side-by-side comparison of base model versus fine-tuned model output in Unsloth Studio's playground">
           <figcaption><b>Base vs. fine-tuned</b> — same instruction, side by side. The base model echoes the input back nearly unchanged; the fine-tuned model correctly expands it and inserts <code>[pause]</code> markers for TTS.</figcaption>
-        </figure>
+        </figure> -->
       </div>
 
       <table class="fact-table">

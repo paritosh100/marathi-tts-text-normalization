@@ -65,3 +65,17 @@ Or via the CLI, from this directory:
 cd showcase
 npx vercel --prod
 ```
+
+## Analytics
+
+`index.html` already includes the Vercel Web Analytics script tag
+(`/_vercel/insights/script.js` — the plain-HTML integration, no npm package
+needed). It's inert until you flip one switch:
+
+1. In the Vercel dashboard, open this project.
+2. Go to the **Analytics** tab → **Enable**.
+
+That's it — no further code changes. It then tracks visits, referrers, and
+visitor **country** (Vercel's Web Analytics reports geography at country
+granularity, not city/precise-location, and doesn't use cookies). Data
+shows up in that same tab a few minutes after the first real visit post-enable.
