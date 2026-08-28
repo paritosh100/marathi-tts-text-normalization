@@ -20,7 +20,7 @@ def audio_filename(text: str, ext: str = "mp3") -> str:
 
 
 def speak(
-    raw_text: str, voice: str = DEFAULT_VOICE, output_dir: Path = OUTPUT_DIR, engine: str = "edge"
+    raw_text: str, voice: str = DEFAULT_VOICE, output_dir: Path = OUTPUT_DIR, engine: str = "indicf5"
 ) -> tuple[str, Path]:
     normalized = normalize_text(raw_text)
     if engine == "indicf5":
@@ -41,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description="Normalize Marathi text and synthesize speech.")
     parser.add_argument("text", help="Raw Marathi text to speak")
     parser.add_argument("--voice", default=DEFAULT_VOICE, help="edge-tts voice (ignored for --engine indicf5)")
-    parser.add_argument("--engine", choices=["edge", "indicf5"], default="edge")
+    parser.add_argument("--engine", choices=["edge", "indicf5"], default="indicf5")
     args = parser.parse_args()
 
     try:

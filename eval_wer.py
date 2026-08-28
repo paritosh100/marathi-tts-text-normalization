@@ -83,7 +83,7 @@ def run_eval(
     eval_path: Path = EVAL_PATH,
     report_path: Path = REPORT_PATH,
     limit: int | None = None,
-    engine: str = "edge",
+    engine: str = "indicf5",
     note: str = "",
 ):
     rows = []
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--selfcheck", action="store_true")
     parser.add_argument("--limit", type=int, default=None, help="Only evaluate the first N rows")
-    parser.add_argument("--engine", choices=["edge", "indicf5"], default="edge")
+    parser.add_argument("--engine", choices=["edge", "indicf5"], default="indicf5")
     parser.add_argument("--note", default="", help="Freeform note logged as an MLflow tag on this run")
     args = parser.parse_args()
     if args.selfcheck:

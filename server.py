@@ -29,7 +29,7 @@ app.mount("/assets", StaticFiles(directory=SITE_DIR / "assets"), name="assets")
 
 class SpeakRequest(BaseModel):
     text: str
-    engine: str = "edge"  # or "indicf5"
+    engine: str = "indicf5"  # or "edge"
 
 
 class SpeakResponse(BaseModel):
