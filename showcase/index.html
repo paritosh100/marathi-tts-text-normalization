@@ -120,6 +120,13 @@
   .fact-table th { width: 40%; font-weight: 500; color: var(--ink-soft); vertical-align: top; }
   .fact-table td { font-variant-numeric: tabular-nums; }
 
+  .data-snippet { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin-top: 1.4rem; }
+  .data-row { padding: 1rem 1.2rem; background: var(--paper-raised); }
+  .data-row:not(:last-child) { border-bottom: 1px solid var(--line); }
+  .data-k { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft); margin-top: 0.6em; }
+  .data-k:first-child { margin-top: 0; }
+  .data-row .deva { margin-top: 0.3em; font-size: 0.95rem; }
+
   .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 1.6rem; }
   .status-card { background: var(--paper); padding: 1.1rem 1.2rem; }
   .status-card .k { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
@@ -315,6 +322,38 @@
     </section>
 
     <section class="j">
+      <div class="eyebrow">Training data</div>
+      <h2>What the model actually learned from</h2>
+      <p>1,798 pairs, Alpaca format — a fixed instruction, a raw sentence as
+        input, the phonetically normalized, pause-annotated version as the
+        target output. Three real rows, unedited:</p>
+      <div class="data-snippet">
+        <div class="data-row">
+          <div class="data-k">input</div>
+          <div class="deva">त्याच्या bank account मध्ये ₹50000 जमा झाले.</div>
+          <div class="data-k">output</div>
+          <div class="deva">त्याच्या [pause] बँक अकाऊंटमध्ये [pause] पन्नास हजार रुपये [pause] जमा झाले.</div>
+        </div>
+        <div class="data-row">
+          <div class="data-k">input</div>
+          <div class="deva">आम्ही ठरवले आहे की या weekend ला 50 km दूर असलेल्या fort वर Trekking ला जायचे.</div>
+          <div class="data-k">output</div>
+          <div class="deva">आम्ही ठरवले आहे की या वीकेंड ला [pause] पन्नास किलोमीटर दूर असलेल्या किल्ल्यावर [pause] ट्रेकिंग ला जायचे.</div>
+        </div>
+        <div class="data-row">
+          <div class="data-k">input</div>
+          <div class="deva">हा train चा ticket counter सकाळी ९:३० ला उघडतो का?</div>
+          <div class="data-k">output</div>
+          <div class="deva">हा ट्रेन्स चा तिकीट काउंटर सकाळी नऊ वाजून तीस मिनिटांनी उघडतो का?</div>
+        </div>
+      </div>
+      <p style="font-size:0.85rem; color:var(--ink-soft)">Same shape as
+        every example on the Listen tab — code-switched English, currency,
+        distances, times — because the dataset was built to match how
+        Marathi is actually typed, not a cleaned-up textbook version of it.</p>
+    </section>
+
+    <section class="j">
       <div class="eyebrow">Closing the loop</div>
       <h2>A voice engine that could actually be trusted with the output</h2>
       <p>The normalized text still needs a voice. Off-the-shelf candidates
@@ -331,6 +370,31 @@
         (IndicF5's own shipped sample was tagged "happy" and made every
         sentence sound like shouting), and stripping the <code>[pause]</code>
         markers before synthesis, which neither engine understood literally.</p>
+    </section>
+
+    <section class="j">
+      <div class="eyebrow">Evaluation</div>
+      <h2>The eval loop</h2>
+      <p>Every one of the 200 held-out sentences runs through the same four
+        steps, and two separate scores come out the other end:</p>
+      <table class="fact-table">
+        <tr><th>1. Normalize</th><td>raw sentence → the LoRA model's normalized Devanagari output</td></tr>
+        <tr><th>2. Score (text)</th><td>normalized output vs. the hand-written reference → <b>normalizer WER</b></td></tr>
+        <tr><th>3. Synthesize</th><td>normalized text → speech (IndicF5 or edge-tts)</td></tr>
+        <tr><th>4. Transcribe &amp; score</th><td>speech → Whisper → text vs. reference → <b>round-trip WER</b></td></tr>
+      </table>
+      <p>Splitting these into two numbers on purpose: round-trip WER alone
+        can't tell you whether a bad score came from the normalizer, the
+        voice engine, or Whisper mishearing something — three sources of
+        error stacked into one number. Normalizer WER isolates just the
+        first step, so a regression in text quality can't hide behind a
+        voice engine that happens to sound fine, and a voice engine
+        comparison isn't muddied by normalizer changes. That separation is
+        what actually caught the two real bugs this project found: a
+        library regression that only showed up in round-trip WER (the text
+        was correct, the audio wasn't) and a normalizer fix that only
+        showed up in normalizer WER (the words were right regardless of
+        which engine spoke them).</p>
     </section>
 
     <section class="j">
