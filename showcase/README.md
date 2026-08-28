@@ -13,6 +13,20 @@ This is separate from `../site/` (the FastAPI-backed live-synthesis demo in
 the main repo, which needs the actual model running locally) — this is a
 pre-generated, static, host-anywhere version for sharing.
 
+```mermaid
+flowchart TD
+    subgraph gen ["Local pipeline — run once, not at request time"]
+        A["normalize.py"] --> B["indicf5_client.py / tts_client.py"]
+        B --> C["10 pre-generated .wav clips"]
+    end
+    C --> D["showcase/public/"]
+    D --> E["showcase/index.html"]
+    E --> F["Vercel — static hosting"]
+```
+
+Everything in `showcase/` is pre-baked: no server, no live model calls, no
+API keys needed at request time — just static files Vercel serves as-is.
+
 ## Structure
 
 ```
