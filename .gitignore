@@ -7,3 +7,6 @@ run.log
 MARATHI_TTS_PROJECT_PLAN.md
 output/
 eval_report.jsonl
+PROGRESS.md
+mlflow.db
+mlruns/

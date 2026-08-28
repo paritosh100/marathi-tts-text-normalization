@@ -4,9 +4,12 @@ import argparse
 import json
 import logging
 import re
+import subprocess
 from pathlib import Path
 
-from normalize import normalize_text
+import mlflow
+
+from normalize import ADAPTER_PATH, normalize_text
 from transcribe import transcribe
 from tts_client import SpeechSynthesisError, synthesize_speech
 
@@ -15,6 +18,26 @@ logger = logging.getLogger(__name__)
 SCRIPT_DIR = Path(__file__).parent
 EVAL_PATH = SCRIPT_DIR / "dataset" / "eval.jsonl"
 REPORT_PATH = SCRIPT_DIR / "eval_report.jsonl"
+
+MLFLOW_EXPERIMENT = "marathi-tts-eval"
+
+
+def _git_commit() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=SCRIPT_DIR, text=True
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "unknown"
+
+# indicf5_client pulls in torch/f5_tts, which is slow to import and unneeded
+# for the (default) edge-tts path -- imported lazily, only when selected.
+def _synthesize(engine: str, text: str) -> bytes:
+    if engine == "indicf5":
+        from indicf5_client import synthesize_speech_indicf5
+
+        return synthesize_speech_indicf5(text)
+    return synthesize_speech(text)
 
 # tts_client._apply_pauses turns "[pause]" into a comma, and Whisper regularly
 # hallucinates the literal word "pause" into the resulting silence (confirmed
@@ -56,7 +79,13 @@ def word_error_rate(reference: str, hypothesis: str) -> float:
     return dp[m] / n
 
 
-def run_eval(eval_path: Path = EVAL_PATH, report_path: Path = REPORT_PATH, limit: int | None = None):
+def run_eval(
+    eval_path: Path = EVAL_PATH,
+    report_path: Path = REPORT_PATH,
+    limit: int | None = None,
+    engine: str = "edge",
+    note: str = "",
+):
     rows = []
     with open(eval_path, encoding="utf-8") as f:
         for line in f:
@@ -65,6 +94,24 @@ def run_eval(eval_path: Path = EVAL_PATH, report_path: Path = REPORT_PATH, limit
     if limit:
         rows = rows[:limit]
 
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+    with mlflow.start_run():
+        mlflow.log_params(
+            {
+                "engine": engine,
+                "git_commit": _git_commit(),
+                "checkpoint": ADAPTER_PATH,
+                "eval_rows": len(rows),
+            }
+        )
+        if note:
+            mlflow.set_tag("note", note)
+        aggregate = _run_eval_rows(rows, report_path, engine)
+        mlflow.log_artifact(str(report_path))
+        return aggregate
+
+
+def _run_eval_rows(rows: list[dict], report_path: Path, engine: str) -> float:
     results = []
     with open(report_path, "w", encoding="utf-8") as out:
         for idx, row in enumerate(rows, 1):
@@ -76,7 +123,7 @@ def run_eval(eval_path: Path = EVAL_PATH, report_path: Path = REPORT_PATH, limit
             # mishearing) that also feeds into `wer` below.
             normalized_wer = word_error_rate(reference, normalized)
             try:
-                audio = synthesize_speech(normalized)
+                audio = _synthesize(engine, normalized)
                 transcribed = transcribe(audio)
                 scored_reference, scored_transcribed = _strip_pause_artifacts(reference, transcribed)
                 wer = word_error_rate(scored_reference, scored_transcribed)
@@ -111,6 +158,7 @@ def run_eval(eval_path: Path = EVAL_PATH, report_path: Path = REPORT_PATH, limit
     print(f"Evaluated {len(results)} rows ({len(scored)} scored, {len(results) - len(scored)} errored)")
     print(f"Aggregate normalizer-only WER (text vs text, no TTS/ASR): {normalized_aggregate:.4f}")
     print(f"Aggregate round-trip WER (text -> speech -> text): {aggregate:.4f}")
+    mlflow.log_metrics({"normalizer_wer": normalized_aggregate, "round_trip_wer": aggregate})
     return aggregate
 
 
@@ -133,8 +181,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--selfcheck", action="store_true")
     parser.add_argument("--limit", type=int, default=None, help="Only evaluate the first N rows")
+    parser.add_argument("--engine", choices=["edge", "indicf5"], default="edge")
+    parser.add_argument("--note", default="", help="Freeform note logged as an MLflow tag on this run")
     args = parser.parse_args()
     if args.selfcheck:
         _demo()
     else:
-        run_eval(limit=args.limit)
+        run_eval(limit=args.limit, engine=args.engine, note=args.note)

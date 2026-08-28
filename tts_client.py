@@ -13,14 +13,17 @@ DEFAULT_VOICE = "mr-IN-AarohiNeural"
 MAX_RETRIES = 3
 BACKOFF_SECONDS = 1.5
 
-# edge_tts.Communicate always XML-escapes its input before embedding it in SSML,
-# so a literal <break> tag isn't an option — it would just get read out loud.
-# A comma is the only [pause] -> real-pause translation neural voices honor here.
+# Shared by every synthesis engine (edge-tts, indicf5_client): none of them
+# understand the literal "[pause]" marker normalize_text() emits -- edge-tts
+# would read the bracket text aloud, and IndicF5 chokes on it entirely
+# (degenerates into repeating a garbage token). A comma is the one
+# [pause] -> real-pause translation every plain-text TTS engine we've used
+# honors.
 _PAUSE_RE = re.compile(r"\s*\[pause\]\s*")
 _DOUBLE_PUNCT_RE = re.compile(r"([,.!?])\s*,")
 
 
-def _apply_pauses(text: str) -> str:
+def apply_pauses(text: str) -> str:
     text = _PAUSE_RE.sub(", ", text)
     text = _DOUBLE_PUNCT_RE.sub(r"\1", text)
     return text.strip()
@@ -31,7 +34,7 @@ class SpeechSynthesisError(Exception):
 
 
 async def _synthesize_once(text: str, voice: str) -> bytes:
-    communicate = edge_tts.Communicate(_apply_pauses(text), voice)
+    communicate = edge_tts.Communicate(apply_pauses(text), voice)
     chunks = bytearray()
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -66,8 +69,8 @@ def synthesize_speech(text: str, voice: str = DEFAULT_VOICE) -> bytes:
 
 
 def _demo():
-    assert _apply_pauses("अरे यार, [pause] काय झालं?") == "अरे यार, काय झालं?"
-    assert _apply_pauses("हा प्रोजेक्ट [pause] पूर्ण होईल.") == "हा प्रोजेक्ट, पूर्ण होईल."
+    assert apply_pauses("अरे यार, [pause] काय झालं?") == "अरे यार, काय झालं?"
+    assert apply_pauses("हा प्रोजेक्ट [pause] पूर्ण होईल.") == "हा प्रोजेक्ट, पूर्ण होईल."
     audio = synthesize_speech("नमस्कार, [pause] आज हवामान छान आहे.")
     assert isinstance(audio, bytes) and len(audio) > 0
     print(f"Got {len(audio)} bytes of audio")
