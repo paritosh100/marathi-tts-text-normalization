@@ -1,5 +1,9 @@
 # Marathi TTS Text Normalization
 
+**[→ Listen to the demo / see the training journey](./showcase)** — a static
+showcase site (audio comparisons + Unsloth Studio & MLflow screenshots),
+deployable to Vercel as-is.
+
 Off-the-shelf TTS engines read Marathi text with a Hindi accent, a flat monotone, and frequent phonetic mistakes — the retroflex `ळ` collapses into `ल`, times like `२:३०` get read literally instead of spoken naturally, and English loanwords ("Office", "Laptop") come out mangled.
 
 This project fixes that at the text layer: an LLM-based normalizer takes raw, messy Marathi input (mixed digits, English words, no punctuation cues) and rewrites it into clean, phonetically accurate, speech-ready Devanagari — expanded numbers, correct retroflex consonants, transliterated loanwords, and `[pause]` tags marking natural clause breaks. That normalized text is what a downstream TTS engine actually synthesizes, so the resulting audio sounds like a person, not a text-to-speech demo.
