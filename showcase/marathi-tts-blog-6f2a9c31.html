@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marathi TTS that sounds like a person: fixing speech at the text layer</title>
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Marathi TTS that sounds like a person: fixing speech at the text layer">
+<style>
+  body { margin:0; background:#fff; color:#1a1a1a;
+    font:18px/1.7 Georgia,"Times New Roman",serif; }
+  main { max-width:44rem; margin:0 auto; padding:3rem 1.25rem 6rem; }
+  h1,h2,h3 { font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.25; margin:2.2rem 0 .6rem; }
+  h1 { font-size:2rem; margin-top:0; }
+  h2 { font-size:1.45rem; border-top:1px solid #e5e5e5; padding-top:1.6rem; }
+  h3 { font-size:1.15rem; }
+  p,li { font-size:1.06rem; }
+  a { color:#1a66dc; }
+  code { font:.9em ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    background:#f3f3f3; padding:.1em .35em; border-radius:3px; }
+  pre { background:#f6f8fa; border:1px solid #e5e5e5; border-radius:6px;
+    padding:1rem; overflow-x:auto; }
+  pre code { background:none; padding:0; }
+  table { border-collapse:collapse; width:100%; margin:1.4rem 0;
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; font-size:.95rem; }
+  th,td { border:1px solid #d5d5d5; padding:.5rem .7rem; text-align:left;
+    vertical-align:top; }
+  th { background:#f3f3f3; }
+  figure { margin:1.8rem 0; text-align:center; }
+  figure img { max-width:100%; height:auto; }
+  figcaption { font-size:.85rem; color:#666; margin-top:.5rem;
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; }
+  hr { border:none; border-top:1px solid #e5e5e5; margin:2.5rem 0; }
+  blockquote { margin:1.4rem 0; padding-left:1rem; border-left:3px solid #ccc; color:#555; }
+</style>
+</head>
+<body>
+<main><article>
+<h1>Marathi TTS that sounds like a person: fixing speech at the text layer</h1>
+<p><strong>Subtitle:</strong> How we distilled messy, code-switched Marathi into a local Llama 3.1 8B LoRA, then spoke it with IndicF5 — and what went wrong along the way.</p>
+<p>Most complaints about Marathi text-to-speech are aimed at the voice. The voice is often fine. The <strong>script</strong> is not.</p>
+<p>People type Marathi the way they actually type: Devanagari mixed with English, digits in both scripts, <code>₹62,000</code>, <code>२:३० PM</code>, <code>42.5°C</code>, <code>25% battery</code>. Off-the-shelf engines then read that string as if it were Hindi-flavored English with a colon in the middle. Retroflex <code>ळ</code> collapses into <code>ल</code>. There is no breath. Loanwords stay in Latin letters and come out foreign.</p>
+<p>This project, <strong>मराठी आवाज / Marathi TTS text normalization</strong>, sits a translator in front of the speaker. A locally fine-tuned Llama rewrites the messy line into phonetically accurate, pause-annotated Devanagari. A Marathi-capable TTS model then reads <em>that</em>. We did not train a new voice from scratch. We trained the thing that decides <strong>what the voice is allowed to say</strong>.</p>
+<p>The work started as a test of <a href="https://unsloth.ai">Unsloth Studio</a>: QLoRA on a Mac, no cloud training job. Marathi speech normalization was the test case because you can hear whether it worked.</p>
+<hr />
+<h2>Why, how, and with what</h2>
+<p><strong>Why it exists.</strong> Marathi TTS gets blamed for a "robotic Hindi accent." The
+real defect is upstream: engines are handed raw, code-switched text
+(<code>२:३० PM</code>, <code>₹62,000</code>, <code>Office</code>, <code>ळ</code> vs <code>ल</code>, no clause breaks) and asked to
+invent Marathi phonology at synthesis time. Fix the text and the existing
+voices already sound human. So the project builds the <em>text</em> layer, not a
+voice.</p>
+<p><strong>How it works.</strong> A teacher LLM (Gemini) writes ~2,000 normalization
+examples once. Those are distilled into a LoRA adapter on Llama 3.1 8B,
+trained locally with QLoRA in Unsloth Studio. At runtime a deterministic
+pass expands numbers, the LoRA rewrites everything else into
+phonetically-accurate, <code>[pause]</code>-annotated Devanagari, <code>[pause]</code> becomes a
+comma, and a Marathi-capable TTS engine (IndicF5, with edge-tts as
+fallback) speaks it. Nothing calls an API at runtime.</p>
+<p><strong>With what.</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Layer</th>
+<th style="text-align: left;">Tool</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Training-label teacher</td>
+<td style="text-align: left;">Gemini API (<code>gemini-3.5-flash-lite</code>), two-pass</td>
+</tr>
+<tr>
+<td style="text-align: left;">Fine-tuning</td>
+<td style="text-align: left;">Unsloth Studio, QLoRA (4-bit base + LoRA r=32 / α=64)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Base model</td>
+<td style="text-align: left;"><code>unsloth/Meta-Llama-3.1-8B</code> (base, Alpaca prompt)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Local inference</td>
+<td style="text-align: left;"><code>mlx-lm</code> on Apple Silicon</td>
+</tr>
+<tr>
+<td style="text-align: left;">Number expansion</td>
+<td style="text-align: left;">hand-written Marathi word lists + regex (<code>normalize.py</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Voice (default)</td>
+<td style="text-align: left;"><a href="https://huggingface.co/ai4bharat/IndicF5">IndicF5</a> (AI4Bharat), zero-shot F5-TTS clone</td>
+</tr>
+<tr>
+<td style="text-align: left;">Voice (fallback)</td>
+<td style="text-align: left;">Microsoft edge-tts, <code>mr-IN-AarohiNeural</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Eval ASR</td>
+<td style="text-align: left;"><code>mlx-whisper</code>, <code>whisper-large-v3</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Experiment tracking</td>
+<td style="text-align: left;">MLflow (<code>marathi-tts-eval</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Local demo</td>
+<td style="text-align: left;">FastAPI (<code>server.py</code>, <code>127.0.0.1</code> only) + static <code>showcase/</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>The problem in one table</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">What you typed</th>
+<th style="text-align: left;">What typical TTS does</th>
+<th style="text-align: left;">What a speaker would say</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>कमळ</code></td>
+<td style="text-align: left;"><code>कमल</code> (<code>ळ</code> → <code>ल</code>)</td>
+<td style="text-align: left;">Keep the retroflex</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>२:३० PM</code></td>
+<td style="text-align: left;">Digit-by-digit, or “two colon thirty”</td>
+<td style="text-align: left;"><code>दोन वाजून तीस मिनिटांनी</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Office</code>, <code>Laptop</code></td>
+<td style="text-align: left;">English accent</td>
+<td style="text-align: left;"><code>ऑफिस</code>, <code>लॅपटॉप</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Long clause, no commas</td>
+<td style="text-align: left;">Flat monotone</td>
+<td style="text-align: left;">A breath at the clause boundary</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ज्ञ</code>, <code>क्ष</code></td>
+<td style="text-align: left;">Often mangled</td>
+<td style="text-align: left;">Full conjuncts</td>
+</tr>
+</tbody>
+</table>
+<p>If you hand a voice model Latin <code>Office</code> and ASCII <code>2:30</code>, you are asking it to invent Marathi phonology at synthesis time. That is the wrong layer. <strong>Grapheme-to-phoneme for this language starts with getting the Devanagari right.</strong></p>
+<hr />
+<h2>Architecture: two models, four steps</h2>
+<p>Two things are trained/built once (left), and one path runs on every request
+(right). The runtime path never touches the network.</p>
+<figure><img src="public/blog/diagram-1.png" alt="System architecture: build-time dataset and QLoRA training on the left, the offline runtime pipeline on the right." loading="lazy"><figcaption>System architecture: build-time dataset and QLoRA training on the left, the offline runtime pipeline on the right.</figcaption></figure>
+
+<ol>
+<li><strong>Number expansion</strong> — regex + Marathi word lists, <em>before</em> the prompt.</li>
+<li><strong>The LoRA</strong> — transliteration, <code>[pause]</code> insertion, <code>ळ</code> and conjuncts,
+   clock times, <code>%</code>, small numbers. Text only; it never produces audio.</li>
+<li><strong><code>[pause]</code> → comma</strong> — no TTS engine understands the literal marker.</li>
+<li><strong>Synthesis</strong> — <a href="https://huggingface.co/ai4bharat/IndicF5">IndicF5</a>
+   (AI4Bharat), a zero-shot F5-TTS checkpoint that clones a short Marathi
+   reference clip, is the default. Microsoft <strong>edge-tts</strong>
+   (<code>mr-IN-AarohiNeural</code>) is the generic fallback.</li>
+</ol>
+<p>The local FastAPI demo (<code>server.py</code>) binds to <code>127.0.0.1</code> only. The
+shareable <a href="../showcase/">showcase</a> is static: a pipeline screen recording,
+pre-rendered raw-vs-normalized wavs, Unsloth Studio screenshots, MLflow
+screenshots — no GPU at request time.</p>
+<hr />
+<h2>Stage 0 — Why not just call Gemini forever?</h2>
+<p>The training labels were produced by Gemini. Runtime is <strong>not</strong> Gemini.</p>
+<p>A teacher API is fine for generating 2,000 pairs once. It is a poor production normalizer: latency, cost, privacy, and it is the opposite of “fine-tune on this laptop.” The pipeline <strong>distills</strong> Gemini’s rewrite rules into a student that loads from disk.</p>
+<p>That is the whole point of the Unsloth experiment: take a real low-resource-language gap, not a toy benchmark, and see whether a local QLoRA run is enough.</p>
+<hr />
+<h2>Stage 1 — Building the dataset</h2>
+<p><code>dataset/generate_dataset.py</code> uses the Gemini API (<code>gemini-3.5-flash-lite</code>) in two passes, paced for free-tier rate limits (~4.5s between calls, up to 5 retries on 429).</p>
+<ol>
+<li><strong>Generation</strong> (temperature 0.9): natural everyday Marathi that <em>must</em> mix digits, clock times, percentages, currency, units (<code>km</code> / <code>kg</code> / <code>GB</code>), English loanwords, and sentence types (statements, questions, exclamations, commands) — not a textbook corpus.</li>
+<li><strong>Normalization</strong> (temperature 0.2): the same linguistic rules the student must learn. JSON only: <code>{"normalized_text": "..."}</code>.</li>
+</ol>
+<p>Rules given to the teacher:</p>
+<ol>
+<li>Expand numbers into spoken Marathi (<code>२:३०</code> → <code>दोन वाजून तीस मिनिटांनी</code>, <code>५००</code> → <code>पाचशे</code>).</li>
+<li>Expand symbols and abbreviations (<code>%</code> → <code>टक्के</code>, <code>p.m.</code> → <code>दुपारी</code>).</li>
+<li>Transliterate English into Devanagari phonetics.</li>
+<li>Insert <code>[pause]</code> at natural clause breaks.</li>
+<li>Preserve <code>ळ</code> and conjuncts (<code>ज्ञा</code>, <code>क्ष</code>).</li>
+</ol>
+<p>Each record is flushed immediately. Re-running skips inputs already on disk.</p>
+<p>Output is Alpaca-format JSONL:</p>
+<pre><code class="language-json">{
+  &quot;instruction&quot;: &quot;Convert the raw Marathi text into phonetically normalized, speech-ready Devanagari text with pause annotations for TTS.&quot;,
+  &quot;input&quot;: &quot;मी काल २:३० PM ला ५०० रुपयांचे पुस्तक विकत घेतले.&quot;,
+  &quot;output&quot;: &quot;मी काल [pause] दोन वाजून तीस मिनिटांनी [pause] पाचशे रुपयांचे पुस्तक विकत घेतले.&quot;
+}
+</code></pre>
+<p><strong>Size:</strong> 1,998 pairs in <code>marathi_speech_normalization.jsonl</code>, split into <strong>1,798 train</strong> / <strong>200 eval</strong>.</p>
+<figure><img src="public/blog/diagram-2.png" alt="Dataset build: two Gemini passes produce Alpaca JSONL, checked in eda.ipynb, split 1,798 train / 200 eval." loading="lazy"><figcaption>Dataset build: two Gemini passes produce Alpaca JSONL, checked in eda.ipynb, split 1,798 train / 200 eval.</figcaption></figure>
+
+<p>EDA (<code>dataset/eda.ipynb</code>) was run before training, not after hoping for the best:</p>
+<ul>
+<li>No duplicate inputs; a handful of duplicate outputs.</li>
+<li>Outputs are longer than inputs (numbers expand; pauses are added).</li>
+<li>About <strong>5.9%</strong> of gold outputs have zero <code>[pause]</code> tags (short sentences, which is reasonable).</li>
+<li>After stripping the ASCII <code>[pause]</code> marker, only <strong>~0.2%</strong> of outputs still leaked Latin characters — residual teacher mistakes, not the intended behavior.</li>
+</ul>
+<p>The dataset is built to match <strong>how Marathi is typed</strong>, including <code>Train चा Ticket</code> and <code>₹50000</code>, not a cleaned literary register.</p>
+<hr />
+<h2>Stage 2 — Why Llama 3.1 8B, why train, why 4-bit LoRA</h2>
+<h3>Why train</h3>
+<p>A stock Llama does not know this job. In Unsloth Studio’s playground, the <strong>base model mostly echoed</strong> the messy input. The <strong>fine-tuned model</strong> expanded numbers and inserted <code>[pause]</code>.</p>
+<p>With ~1,800 examples you are teaching a <strong>narrow rewrite skill</strong>, not a new language. That is when you adapt a strong multilingual base instead of training an LLM or a vocoder from zero.</p>
+<h3>Why Llama 3.1 8B</h3>
+<p>The trainer is Unsloth Studio; the checkpoint the code loads is <code>unsloth/Meta-Llama-3.1-8B</code>.</p>
+<ul>
+<li><strong>8B</strong> is large enough for mixed Devanagari, English, and numbers. 1B–3B models are a poor bet for this linguistic mix.</li>
+<li><strong>8B</strong> is small enough to train and later serve on a <strong>MacBook (M5 Pro, 48 GB unified memory)</strong> — the hardware this run actually used.</li>
+<li><strong>70B</strong> would abandon the “local Studio, no cloud GPU” goal.</li>
+<li><strong>Llama 3.1</strong> is substantially stronger on non-English scripts than Llama 2.</li>
+</ul>
+<p>Llama only produces <strong>text</strong>. IndicF5 produces <strong>audio</strong>.</p>
+<p>(An older page in <code>site/</code> says “8B-Instruct.” The running path is the Unsloth <strong>base</strong> 8B plus an <strong>Alpaca</strong> prompt. That matches how the LoRA was trained.)</p>
+<h3>Why LoRA, not a full fine-tune</h3>
+<p>Full fine-tuning updates all ~8 billion parameters. For 1,798 pairs that is how you overfit and forget.</p>
+<p><strong>LoRA</strong> freezes the base and trains small adapter matrices on seven modules: <code>q_proj</code>, <code>k_proj</code>, <code>v_proj</code>, <code>o_proj</code>, <code>gate_proj</code>, <code>up_proj</code>, <code>down_proj</code>. Rank <strong>32</strong>, alpha <strong>64</strong>. The portable artifact is <code>checkpoint-450</code>, not a second 16GB model.</p>
+<h3>Why 4-bit (QLoRA)</h3>
+<p>Quantization is <strong>not</strong> what learns Marathi. It compresses the <strong>frozen</strong> 8B so training fits.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Precision</th>
+<th style="text-align: left;">Weights only (order of magnitude)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">16-bit 8B</td>
+<td style="text-align: left;">~16 GB</td>
+</tr>
+<tr>
+<td style="text-align: left;">4-bit 8B</td>
+<td style="text-align: left;">~4 GB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>QLoRA:</strong> load the base in 4-bit, keep LoRA in higher precision, backprop only through the adapters. Mid-run the Studio GPU monitor sat at <strong>~8.6 GB of 48 GB</strong>, 99% utilization, 88.6 °C. Config: batch size 2 × gradient accumulation 4 (effective batch 8), AdamW, learning rate <code>2e-4</code>, linear schedule. The run was configured for <strong>750 steps</strong>; the exported adapter is <strong>checkpoint-450</strong> — about <strong>2 epochs</strong> over 1,798 pairs at effective batch 8.</p>
+<p>Without QLoRA, teaching an 8B model on this machine is the hard part. Without LoRA, you would be rewriting the whole network. Without training, you still have a chatbot that echoes <code>2:30</code>.</p>
+<h3>Inference prompt discipline</h3>
+<p>The LoRA never saw chat-template tokens. Using <code>apply_chat_template()</code> caused <strong>runaway generation</strong> (no learned EOS). Inference (<code>normalize.py</code>, <strong>mlx-lm</strong>) uses the same Alpaca string as training:</p>
+<pre><code>### Instruction:
+...
+### Input:
+...
+### Response:
+</code></pre>
+<p>Defensive decoding, all in <code>normalize.py</code>: repetition penalty 1.3; truncate at any leaked <code>### Instruction:</code> / <code>### Input:</code> / <code>### Response:</code> marker; a sentence-count check (the response shouldn't have more terminal <code>.!?</code> than the input did); and a verbatim-restart check that cuts the response if its own opening 3 words reappear later (the model sometimes restarts after a <code>[pause]</code> instead of ending). Those are patches. The real fix for EOS is more training or proper stop strings in <code>generate()</code>.</p>
+<hr />
+<h2>Stage 2b — Numbers the LLM was not allowed to guess</h2>
+<p>Eval showed checkpoint-450 <strong>drifting on decimals and comma-grouped integers</strong>: <code>18.5</code> became the wrong integer plus a random separator word (<code>पॉईंट</code> / <code>दशांश</code> / <code>पूर्णांक</code> — the Gemini labels were inconsistent). <code>₹62,000</code> came back as 82,000. A Devanagari-digit amount came back as gibberish.</p>
+<p><strong>Numbers are a solved problem.</strong> They are expanded with deterministic Marathi word lists <strong>before</strong> the prompt:</p>
+<ul>
+<li>Non-currency decimals: <code>42.5</code> → <code>साडेबेचाळीस</code> (Marathi half-idioms: <code>दीड</code>, <code>अडीच</code>, <code>साडे</code>+number), otherwise <code>पूर्णांक</code> digit-by-digit. Works for ASCII and Devanagari digits.</li>
+<li>Currency decimals (<code>₹105.50</code>, including a space after <code>₹</code>) are <strong>left alone</strong> so the model can do rupees/paise.</li>
+<li>Western comma groups (<code>62,000</code>) become words. Indian lakh grouping (<code>1,00,000</code>) is <strong>not</strong> handled; it never showed up in eval.</li>
+</ul>
+<p>This is the right engineering split: the LLM does transliteration, pauses, and messy language. Regex does arithmetic.</p>
+<figure><img src="public/blog/diagram-3.png" alt="The text/arithmetic split: regex expands decimals and comma-grouped integers; the LoRA handles everything else." loading="lazy"><figcaption>The text/arithmetic split: regex expands decimals and comma-grouped integers; the LoRA handles everything else.</figcaption></figure>
+
+<hr />
+<h2>Stage 3 — A voice that can actually read Marathi</h2>
+<p>The original plan named Coqui <strong>XTTS v2</strong> and <strong>Kokoro</strong>. Their language lists do not include Marathi. They were dropped.</p>
+<p><strong>IndicF5</strong> is zero-shot cloning: a reference wav + its <strong>exact</strong> transcript, then new text in that voice. Architecture in this repo: F5-TTS Base <strong>DiT</strong> (<code>dim=1024</code>, <code>depth=22</code>, <code>heads=16</code>, <code>ff_mult=2</code>, <code>text_dim=512</code>, <code>conv_layers=4</code>), Vocos vocoder, weights from <code>ai4bharat/IndicF5</code>, run on MPS via a vendored <code>f5_tts</code> snapshot.</p>
+<h3>The reference clip</h3>
+<p>IndicF5’s shipped Marathi prompt was tagged <strong>happy</strong>. Every sentence sounded like shouting. We swapped in a calm “Read” scenario line from <a href="https://huggingface.co/datasets/ai4bharat/indicvoices_r">IndicVoices-R</a> (CC-BY-4.0), Marathi test parquet row 32, CER 0.0 — a dataset-verified transcript, not an ASR guess. See <code>assets/ATTRIBUTION.md</code>.</p>
+<h3><code>[pause]</code> is not a TTS token</h3>
+<p>No engine we used understands the literal marker. edge-tts <strong>read the word “pause” aloud</strong>. IndicF5 <strong>degenerated</strong> on it. Both clients rewrite <code>[pause]</code> to a <strong>comma</strong> first. Commas are the one pause cue these engines honor.</p>
+<h3>The f5-tts PyPI regression</h3>
+<p>The current <code>f5-tts</code> package (<code>infer_process</code>) <strong>deterministically</strong> repeated a garbage token on a large fraction of real sentences — including short, boring Marathi with no pauses. Same text, same reference, byte-identical failure on retry. AI4Bharat’s older bundled <code>f5_tts</code> snapshot did not.</p>
+<p>We <strong>vendored</strong> that snapshot (<code>vendor/indicf5_f5_tts/</code>) and patched environment bugs in the copy. Official package: garbage audio on <strong>151 / 200</strong> eval rows. Vendored snapshot: <strong>0 / 200</strong>.</p>
+<p>That bug only showed up in <strong>round-trip</strong> scores. The normalizer’s text was fine. If we had only scored text, we would have shipped a broken speaker.</p>
+<hr />
+<h2>Evaluation: two WERs, on purpose</h2>
+<p><code>eval_wer.py</code> runs every held-out sentence through:</p>
+<ol>
+<li><code>normalize_text</code> → <strong>normalizer WER</strong> (hypothesis vs gold text).</li>
+<li>Synthesize → <strong>mlx-whisper</strong> (<code>whisper-large-v3</code>, <code>language="mr"</code>) → <strong>round-trip WER</strong>.</li>
+</ol>
+<p>Word error rate is classic Levenshtein at word level (<code>word_error_rate()</code> in <code>eval_wer.py</code>).</p>
+<figure><img src="public/blog/diagram-4.png" alt="Dual-WER evaluation: normalizer WER on text, round-trip WER through TTS and Whisper, both logged to MLflow." loading="lazy"><figcaption>Dual-WER evaluation: normalizer WER on text, round-trip WER through TTS and Whisper, both logged to MLflow.</figcaption></figure>
+
+<p><strong>Why two numbers?</strong> Round-trip WER stacks three error sources: normalizer, TTS, Whisper. A pretty voice can hide a bad rewrite. A good rewrite can look terrible if ASR hallucinates.</p>
+<p>Whisper regularly inserts <code>पाउज</code> / <code>पाज</code> / <code>पॉज</code> / <code>पौज</code> at the silence that used to be <code>[pause]</code>. Eval strips gold <code>[pause]</code> tags <strong>and</strong> those hallucination tokens so we are not scoring a word nobody spoke.</p>
+<p>Runs are logged to <strong>MLflow</strong> (<code>marathi-tts-eval</code>): engine, git commit, checkpoint path, both metrics, the JSONL report as an artifact.</p>
+<p>MLflow is how a "looks fine on a spot check" change was caught. Disabling <code>repetition_penalty</code> (an attempt to fix a compound-number bug) passed a 9-case spot check cleanly, but the full 200-row run showed <strong>normalizer WER jumping 0.2235 → 0.3274</strong> — two rows had collapsed into an unbounded token-repeat loop the spot check never hit. Reverted before it shipped.</p>
+<h3>Headline numbers (200 eval sentences)</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric</th>
+<th style="text-align: right;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Normalizer WER (text only)</td>
+<td style="text-align: right;"><strong>0.2235</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Round-trip WER, IndicF5</td>
+<td style="text-align: right;"><strong>0.6304</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Round-trip WER, edge-tts</td>
+<td style="text-align: right;"><strong>~0.64</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Garbage / degenerate audio after vendor fix</td>
+<td style="text-align: right;"><strong>0 / 200</strong></td>
+</tr>
+</tbody>
+</table>
+<p>IndicF5 is <strong>on par</strong> with edge-tts on round-trip WER and <strong>better by ear</strong> (native clone vs generic neural voice). Round-trip in the 0.6s is not “60% of words wrong in the script.” Whisper on synthesized Marathi is noisy. That is why the <strong>0.22 text WER</strong> is the number that describes the LoRA.</p>
+<hr />
+<h2>What you can hear without running anything</h2>
+<p>The showcase Listen tab uses the <strong>same IndicF5 voice</strong> on raw vs normalized text:</p>
+<ol>
+<li><strong>Currency:</strong> <code>Market मध्ये Gold चा भाव आज प्रति 10 gram ₹62,000 आहे.</code> — raw drops English and the number; normalized reads <code>बासष्ट हजार रुपये</code>.</li>
+<li><strong>Temperature:</strong> <code>४२.५°C</code> → <code>साडेबेचाळीस अंश सेल्सिअस</code>, <code>Impossible</code> → <code>इम्पॉसिबल</code>.</li>
+<li><strong>Percent:</strong> <code>२५% battery</code> → <code>पंचवीस टक्के बॅटरी</code>.</li>
+<li><strong>Paise:</strong> <code>₹ १०.५०</code> → <code>दहा रुपये, पन्नास पैसांनी</code> (not “point five zero”).</li>
+<li><strong>Ordinal (known gap):</strong> <code>1st floor</code> / <code>Restaurant</code> improve, but <code>पहिला मजला</code> is the <strong>wrong case</strong>; it should be <code>पहिल्या</code>. That needs more training pairs, not another regex.</li>
+</ol>
+<hr />
+<h2>What still does not work</h2>
+<p>Honest leftover list:</p>
+<ul>
+<li><strong>Ordinals</strong> (<code>3rd</code>, <code>10th</code>, <code>1st floor</code>): grammatical case depends on context. Data problem.</li>
+<li><strong>The model sometimes rewrites a number</strong> that preprocessing already expanded correctly. Data / training problem.</li>
+<li><strong>Indian comma grouping</strong> (<code>1,00,000</code>) is not in the integer expander.</li>
+<li><strong>Runaway generation</strong> is mitigated with heuristics, not a clean EOS.</li>
+<li><strong>Half-idioms</strong> (<code>साडे-</code>) are implemented for wholes &lt; 100; larger <code>.5</code> values fall back to generic <code>पूर्णांक</code>.</li>
+</ul>
+<p>None of these are “add a bigger TTS model.” They are <strong>more and better Marathi rewrite examples</strong>, then another Unsloth run.</p>
+<hr />
+<h2>How the repo is laid out</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Path</th>
+<th style="text-align: left;">Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>dataset/generate_dataset.py</code></td>
+<td style="text-align: left;">Gemini teacher: raw + gold pairs</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dataset/eda.ipynb</code></td>
+<td style="text-align: left;">Sanity-check before training</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dataset/train.jsonl</code>, <code>eval.jsonl</code></td>
+<td style="text-align: left;">Alpaca split</td>
+</tr>
+<tr>
+<td style="text-align: left;">Unsloth Studio</td>
+<td style="text-align: left;">QLoRA; export adapter</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>normalize.py</code></td>
+<td style="text-align: left;">Preprocess + mlx-lm LoRA</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tts_client.py</code></td>
+<td style="text-align: left;">edge-tts + pause rewrite</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>indicf5_client.py</code></td>
+<td style="text-align: left;">IndicF5 + vendored f5_tts</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>speak.py</code></td>
+<td style="text-align: left;">CLI: text → <code>output/*.wav</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>server.py</code> + <code>site/</code></td>
+<td style="text-align: left;">Local browser demo</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>transcribe.py</code></td>
+<td style="text-align: left;">Whisper for eval</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>eval_wer.py</code></td>
+<td style="text-align: left;">Dual WER + MLflow</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vendor/indicf5_f5_tts/</code></td>
+<td style="text-align: left;">Known-good F5-TTS snapshot</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>assets/reference_voice.wav</code></td>
+<td style="text-align: left;">Clone source (IndicVoices-R)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>showcase/</code></td>
+<td style="text-align: left;">Static site for Vercel</td>
+</tr>
+</tbody>
+</table>
+<p>Typical local speak path:</p>
+<pre><code class="language-bash">python3 speak.py &quot;मी काल संध्याकाळी ५ वाजता ऑफिसला गेले.&quot; --engine indicf5
+</code></pre>
+<p>Adapter path defaults to the Unsloth Studio export; override with <code>NORMALIZE_ADAPTER_PATH</code>.</p>
+<hr />
+<h2>Design lessons that transfer</h2>
+<ol>
+<li><strong>Fix the text before you blame the vocoder.</strong> For Indic TTS, mixed-script input is the default, not an edge case.</li>
+<li><strong>Distill a teacher into a small student</strong> when the teacher is an API and the student must run offline.</li>
+<li><strong>Do not ask the LLM to do arithmetic.</strong> If eval shows digit errors, expand numbers outside the model.</li>
+<li><strong>Score layers separately.</strong> One WER cannot tell you whether to vendor a TTS library or collect more ordinals.</li>
+<li><strong>Literal control tokens are not audio.</strong> <code>[pause]</code> is a training convenience. Engines need punctuation they already understand.</li>
+<li><strong>Pin the inference stack that actually works.</strong> A PyPI bump can be a silent quality regression that only audio round-trip reveals.</li>
+<li><strong>QLoRA is how 8B becomes a laptop experiment</strong>, not a statement about Marathi requiring 4-bit physics.</li>
+</ol>
+<hr />
+</article></main>
+</body>
+</html>
