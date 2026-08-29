@@ -1,8 +1,10 @@
 # मराठी आवाज — showcase site
 
-A static, dependency-free showcase site for the Marathi TTS pipeline: two
+A static, dependency-free showcase site for the Marathi TTS pipeline: three
 tabs, no build step, no backend.
 
+- **Demo** — a screen recording walking through the full pipeline end to end
+  (`public/marathi-tts-demo.mp4`).
 - **Listen** — five real sentences run through the pipeline, raw vs.
   normalized text, same IndicF5 voice, audio embedded directly so anyone can
   hear the difference without running any code.
@@ -33,6 +35,7 @@ API keys needed at request time — just static files Vercel serves as-is.
 showcase/
   index.html           everything — markup, styles, tab-switching JS
   public/
+    marathi-tts-demo.mp4  full-pipeline screen recording (Demo tab)
     audio/              10 pre-generated .wav clips (5 sentences × raw/normalized)
     screenshots/
       unsloth/           5 Unsloth Studio training screenshots

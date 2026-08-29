@@ -155,8 +155,8 @@
     <p class="lede">A two-stage pipeline that normalizes messy, code-switched
       Marathi text with a fine-tuned LLM, then speaks it with a cloned
       native voice. Started as a test of Unsloth Studio's local fine-tuning
-      workflow — the two tabs below are the audible proof it works, and the
-      journey of how it got there.</p>
+      workflow — a demo of the whole thing, the audible proof it works, and
+      the journey of how it got there.</p>
     <div class="status-row">
       <span class="pill good">normalizer WER <b>0.22</b></span>
       <span class="pill good">round-trip WER <b>0.63</b></span>
@@ -165,13 +165,25 @@
     </div>
 
     <div class="tabbar" role="tablist" aria-label="Sections">
-      <button class="tab-btn" role="tab" id="tab-btn-listen" aria-controls="tab-listen" aria-selected="true" tabindex="0"><span class="n">01</span>Listen</button>
-      <button class="tab-btn" role="tab" id="tab-btn-journey" aria-controls="tab-journey" aria-selected="false" tabindex="-1"><span class="n">02</span>Training journey</button>
+      <button class="tab-btn" role="tab" id="tab-btn-demo" aria-controls="tab-demo" aria-selected="true" tabindex="0"><span class="n">01</span>Demo</button>
+      <button class="tab-btn" role="tab" id="tab-btn-listen" aria-controls="tab-listen" aria-selected="false" tabindex="-1"><span class="n">02</span>Listen</button>
+      <button class="tab-btn" role="tab" id="tab-btn-journey" aria-controls="tab-journey" aria-selected="false" tabindex="-1"><span class="n">03</span>Training journey</button>
     </div>
   </header>
 
+  <!-- ===================== TAB 1: DEMO ===================== -->
+  <div class="tabpanel active" id="tab-demo" role="tabpanel" aria-labelledby="tab-btn-demo">
+    <p class="lede">A walk through the full pipeline end to end — raw
+      code-switched Marathi in, normalized text and cloned-voice speech out.</p>
+    <figure style="margin-top:2rem">
+      <video controls preload="metadata" playsinline style="width:100%; height:auto; display:block; background:#000"
+             src="public/marathi-tts-demo.mp4"></video>
+      <figcaption><b>Full demo</b> — the two-stage pipeline running on real sentences.</figcaption>
+    </figure>
+  </div>
+
   <!-- ===================== TAB 1: LISTEN ===================== -->
-  <div class="tabpanel active" id="tab-listen" role="tabpanel" aria-labelledby="tab-btn-listen">
+  <div class="tabpanel" id="tab-listen" role="tabpanel" aria-labelledby="tab-btn-listen" hidden>
     <p class="lede">Five real sentences, raw vs. normalized, same IndicF5
       voice each time. Four show the fix working; one is left in on purpose
       to show what still doesn't fully work.</p>
@@ -445,7 +457,7 @@
 <script>
   (function () {
     var buttons = document.querySelectorAll('.tab-btn');
-    var panels = { 'tab-btn-listen': document.getElementById('tab-listen'), 'tab-btn-journey': document.getElementById('tab-journey') };
+    var panels = { 'tab-btn-demo': document.getElementById('tab-demo'), 'tab-btn-listen': document.getElementById('tab-listen'), 'tab-btn-journey': document.getElementById('tab-journey') };
 
     function activate(btn) {
       buttons.forEach(function (b) {
@@ -454,7 +466,10 @@
         b.tabIndex = selected ? 0 : -1;
         var panel = panels[b.id];
         panel.classList.toggle('active', selected);
-        if (selected) { panel.removeAttribute('hidden'); } else { panel.setAttribute('hidden', ''); }
+        if (selected) { panel.removeAttribute('hidden'); } else {
+          panel.setAttribute('hidden', '');
+          panel.querySelectorAll('video, audio').forEach(function (m) { m.pause(); });
+        }
       });
       btn.focus();
     }
